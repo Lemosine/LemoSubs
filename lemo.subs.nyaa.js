@@ -1,0 +1,327 @@
+const DOMAIN = "https://nyaa.si";
+const CATEGORY = "1_2";
+const FILTER = "0";
+const TIMEOUT_MS = 6000;
+const MAX_SEARCHES = 24;
+
+const TRACKERS = [
+  "http://nyaa.tracker.wf:7777/announce",
+  "udp://open.stealth.si:80/announce",
+  "udp://tracker.opentrackr.org:1337/announce",
+  "udp://exodus.desync.com:6969/announce",
+  "udp://tracker.torrent.eu.org:451/announce"
+].map(tracker => `&tr=${encodeURIComponent(tracker)}`).join("");
+
+const DUB_AUDIO_RE = /\b(dubbed|dual[-\s._]?audio|english[-\s._]?(?:dub|audio)|eng[-\s._]?(?:dub|audio)|multi[-\s._]?audio)\b/i;
+
+const COUR_RELEASE_MAPPINGS = [
+  {
+    anilistId: 199221,
+    cour: 3,
+    title: /\bdr\.?\s*stone\s+science\s+future\b/i,
+    season: 4,
+    offsets: { 1: 0, 2: 12, 3: 24 }
+  }
+];
+
+function decodeEntities(value) {
+  return value
+    .replace(/<!\[CDATA\[|\]\]>/g, "")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, "\"")
+    .replace(/&#39;/g, "'")
+    .trim();
+}
+
+function tag(item, name) {
+  const match = item.match(new RegExp(`<${name}>([\\s\\S]*?)<\\/${name}>`, "i"));
+  return match ? decodeEntities(match[1]) : "";
+}
+
+function nyaaTag(item, name) {
+  const match = item.match(new RegExp(`<nyaa:${name}>([\\s\\S]*?)<\\/nyaa:${name}>`, "i"));
+  return match ? decodeEntities(match[1]) : "";
+}
+
+function parseSize(size) {
+  const match = String(size).match(/([\d.]+)\s*(KiB|MiB|GiB|TiB|KB|MB|GB|TB)/i);
+  if (!match) return 0;
+
+  const value = Number.parseFloat(match[1]);
+  const units = { KIB: 1024, KB: 1024, MIB: 1024 ** 2, MB: 1024 ** 2, GIB: 1024 ** 3, GB: 1024 ** 3, TIB: 1024 ** 4, TB: 1024 ** 4 };
+  return Math.round(value * (units[match[2].toUpperCase()] ?? 0));
+}
+
+function magnet(hash, title) {
+  return `magnet:?xt=urn:btih:${hash}&dn=${encodeURIComponent(title)}${TRACKERS}`;
+}
+
+function buildUrl(query) {
+  const params = new URLSearchParams({
+    page: "rss",
+    q: query,
+    c: CATEGORY,
+    f: FILTER,
+    s: "seeders",
+    o: "desc"
+  });
+
+  return `${DOMAIN}/?${params.toString()}`;
+}
+
+function joinQuery(...parts) {
+  return parts.filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
+}
+
+async function fetchText(request, url) {
+  const controller = new AbortController();
+  let timer;
+
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      reject(new Error("Nyaa did not respond in time."));
+    }, TIMEOUT_MS);
+  });
+
+  const response = (async () => {
+    const res = await request(url, {
+      signal: controller.signal,
+      headers: { Accept: "application/rss+xml, application/xml, text/xml" }
+    });
+
+    if (!res.ok) throw new Error(`Nyaa returned HTTP ${res.status}.`);
+    return res.text();
+  })();
+
+  response.catch(() => {});
+
+  try {
+    return await Promise.race([response, timeout]);
+  } catch (error) {
+    if (error.name === "AbortError") throw new Error("Nyaa did not respond in time.");
+    throw new Error(`Could not reach Nyaa: ${error.message}`);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function parseRss(xml, query) {
+  if (!xml.includes("<rss")) return [];
+
+  const expectedSeason = query.expectedSeason;
+  const items = xml.match(/<item>[\s\S]*?<\/item>/g) ?? [];
+  return items
+    .map(item => {
+      const title = tag(item, "title");
+      const hash = nyaaTag(item, "infoHash").toLowerCase();
+      if (!title || !hash || DUB_AUDIO_RE.test(title)) return null;
+      if (!seasonMatches(title, expectedSeason)) return null;
+      if (query.episode && !episodeMatches(title, query.episode) && !rangeContainsEpisode(title, query.episode)) return null;
+
+      const seeders = Number.parseInt(nyaaTag(item, "seeders") || "0", 10);
+      const leechers = Number.parseInt(nyaaTag(item, "leechers") || "0", 10);
+      const downloads = Number.parseInt(nyaaTag(item, "downloads") || "0", 10);
+      const pubDate = tag(item, "pubDate");
+
+      return {
+        title,
+        link: magnet(hash, title),
+        hash,
+        seeders: seeders >= 30000 ? 0 : seeders,
+        leechers: leechers >= 30000 ? 0 : leechers,
+        downloads,
+        size: parseSize(nyaaTag(item, "size")),
+        date: pubDate ? new Date(pubDate) : new Date(0),
+        accuracy: query.episode ? episodeMatches(title, query.episode) ? "high" : "medium" : "medium",
+        type: isBatchTitle(title) ? "batch" : undefined
+      };
+    })
+    .filter(Boolean);
+}
+
+function episodeMatches(title, episode) {
+  const ep = String(episode);
+  const ep2 = ep.padStart(2, "0");
+  const ep3 = ep.padStart(3, "0");
+  return [
+    new RegExp(`(^|[^\\d])${ep2}([^\\d]|$)`),
+    new RegExp(`(^|[^\\d])${ep3}([^\\d]|$)`),
+    new RegExp(`e${ep2}([^\\d]|$)`, "i")
+  ].some(pattern => pattern.test(title));
+}
+
+function rangeContainsEpisode(title, episode) {
+  const ep = Number.parseInt(episode, 10);
+  if (!Number.isFinite(ep)) return false;
+
+  const ranges = [
+    ...title.matchAll(/\bS\d{1,2}E(\d{1,4})\s*[-~]\s*E?(\d{1,4})\b/gi),
+    ...title.matchAll(/\b(\d{1,4})\s*[-~]\s*(\d{1,4})\b/g)
+  ];
+
+  return ranges.some(match => {
+    const start = Number.parseInt(match[1], 10);
+    const end = Number.parseInt(match[2], 10);
+    return Number.isFinite(start) && Number.isFinite(end) && ep >= Math.min(start, end) && ep <= Math.max(start, end);
+  });
+}
+
+function isBatchTitle(title) {
+  return /batch|complete|\b\d{1,3}\s*[-~]\s*\d{1,3}\b|\bS\d{1,2}E\d{1,3}\s*[-~]\s*E?\d{1,3}\b/i.test(title);
+}
+
+function seasonNumber(title) {
+  const season = title.match(/\bseason\s+(\d+)\b/i);
+  if (season) return Number.parseInt(season[1], 10);
+
+  const ordinal = title.match(/\b(\d+)(?:st|nd|rd|th)\s+season\b/i);
+  return ordinal ? Number.parseInt(ordinal[1], 10) : null;
+}
+
+function courNumber(title) {
+  const cour = title.match(/\b(?:cour|part)\s+(\d+)\b/i)
+    ?? title.match(/(\d+)\s*\u30af\u30fc\u30eb/);
+  return cour ? Number.parseInt(cour[1], 10) : null;
+}
+
+function releaseNumbering(titles, episode, anilistId) {
+  const joined = titles.join(" ");
+  const localEpisode = Number.parseInt(episode, 10);
+  const numericAnilistId = Number.parseInt(anilistId, 10);
+  const mapping = COUR_RELEASE_MAPPINGS.find(item => (
+    item.anilistId === numericAnilistId || item.title.test(joined)
+  ));
+  const cour = courNumber(joined)
+    ?? (mapping?.anilistId === numericAnilistId ? mapping.cour : null);
+  const offset = mapping?.offsets[cour];
+
+  if (mapping && Number.isFinite(localEpisode) && Number.isFinite(offset)) {
+    return { season: mapping.season, episode: localEpisode + offset };
+  }
+
+  return { season: seasonNumber(joined), episode };
+}
+
+function resultSeasonNumber(title) {
+  const absolute = title.match(/\bS(\d{1,2})E\d{1,4}\b/i);
+  if (absolute) return Number.parseInt(absolute[1], 10);
+
+  const short = title.match(/\bS(\d{1,2})\b/i);
+  if (short) return Number.parseInt(short[1], 10);
+
+  return seasonNumber(title);
+}
+
+function seasonMatches(title, expectedSeason) {
+  if (!expectedSeason) return true;
+
+  const actualSeason = resultSeasonNumber(title);
+  if (actualSeason) return actualSeason === expectedSeason;
+
+  return expectedSeason === 1;
+}
+
+function titleVariants(titles) {
+  const variants = [];
+
+  for (const title of titles) {
+    const season = seasonNumber(title);
+    const stripped = title
+      .replace(/\s*(?:season\s+\d+|\d+(?:st|nd|rd|th)\s+season|(?:cour|part)\s+\d+|\d+\s*\u30af\u30fc\u30eb)\s*$/i, "")
+      .trim();
+    const cleaned = stripped.replace(/[.:]/g, "").replace(/\s+/g, " ").trim();
+
+    if (stripped && stripped !== title) variants.push(stripped);
+    if (cleaned && cleaned !== stripped) variants.push(cleaned);
+    if (season && stripped) variants.push(`${stripped} S${season}`);
+    if (season && cleaned && cleaned !== stripped) variants.push(`${cleaned} S${season}`);
+    variants.push(title);
+  }
+
+  return [...new Set(variants)].slice(0, 8);
+}
+
+function applyExclusions(results, exclusions = []) {
+  const blocked = exclusions.map(item => item.toLowerCase()).filter(Boolean);
+  if (!blocked.length) return results;
+  return results.filter(result => !blocked.some(item => result.title.toLowerCase().includes(item)));
+}
+
+function dedupe(results) {
+  const seen = new Set();
+  return results
+    .filter(result => {
+      if (seen.has(result.hash)) return false;
+      seen.add(result.hash);
+      return true;
+    })
+    .sort((a, b) => b.seeders - a.seeders);
+}
+
+async function search(query, suffixes, isBatch = false) {
+  if (!query.titles?.length) return [];
+
+  const request = query.fetch ?? fetch;
+  const titles = titleVariants(query.titles.slice(0, 3));
+  const numbering = releaseNumbering(query.titles, query.episode, query.anilistId);
+  const episode = numbering.episode == null ? null : String(numbering.episode).padStart(2, "0");
+  const season = numbering.season;
+  const normalizedQuery = { ...query, episode: numbering.episode, expectedSeason: season };
+  const absolute = season && episode ? `S${String(season).padStart(2, "0")}E${episode}` : null;
+  const searches = [];
+
+  for (const title of titles) {
+    for (const suffix of suffixes) {
+      if (episode && !isBatch) {
+        if (absolute) searches.push(joinQuery(title, absolute, suffix));
+        searches.push(joinQuery(title, "-", episode, suffix));
+        searches.push(joinQuery(title, episode, suffix));
+      }
+
+      if (isBatch) {
+        searches.push(joinQuery(title, "batch", suffix));
+        searches.push(joinQuery(title, "complete", suffix));
+        searches.push(joinQuery(title, "season", suffix));
+      }
+
+      if (!episode || isBatch) searches.push(joinQuery(title, suffix));
+    }
+
+    if (episode && !isBatch) searches.push(title);
+  }
+
+  const attempts = [...new Set(searches)].slice(0, MAX_SEARCHES);
+  const settled = await Promise.allSettled(attempts.map(async item => {
+    const xml = await fetchText(request, buildUrl(item));
+    return parseRss(xml, normalizedQuery);
+  }));
+
+  const results = settled
+    .filter(item => item.status === "fulfilled")
+    .flatMap(item => item.value);
+
+  return applyExclusions(dedupe(results), normalizedQuery.exclusions);
+}
+
+export default {
+  async test(query = {}) {
+    const request = query.fetch ?? fetch;
+    const xml = await fetchText(request, buildUrl("SubsPlease"));
+    return xml.includes("<rss");
+  },
+
+  async single(query) {
+    return search(query, ["", "English Sub"]);
+  },
+
+  async batch(query) {
+    return search(query, ["", "English Sub"], true);
+  },
+
+  async movie(query) {
+    return search(query, ["", "English Sub"]);
+  }
+};
