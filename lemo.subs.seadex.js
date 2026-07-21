@@ -8,6 +8,39 @@ const TRACKERS = [
   "udp://tracker.torrent.eu.org:451/announce"
 ].map(tracker => `&tr=${encodeURIComponent(tracker)}`).join("");
 
+function episodeMatches(title, episode) {
+  const target = Number.parseInt(episode, 10);
+  if (!Number.isFinite(target)) return false;
+
+  const text = String(title);
+  const explicitEpisodes = [
+    ...text.matchAll(/\bS\d{1,2}\s*E\s*(\d{1,4})(?!\d)/gi),
+    ...text.matchAll(/\b(?:E|EP|EPS|Episode)\s*\.?\s*(\d{1,4})(?!\d)/gi)
+  ];
+
+  if (explicitEpisodes.length) {
+    return explicitEpisodes.some(match => Number.parseInt(match[1], 10) === target);
+  }
+
+  for (const match of text.matchAll(/\d{1,4}/g)) {
+    const value = match[0];
+    const parsed = Number.parseInt(value, 10);
+    if (parsed !== target) continue;
+
+    const index = match.index ?? 0;
+    const before = text[index - 1] ?? "";
+    const suffix = text.slice(index + value.length);
+    const after = suffix[0] ?? "";
+
+    if (value.length === 4 && parsed >= 1900 && parsed <= 2099) continue;
+    if (/[A-Za-z]/.test(before)) continue;
+    if (/[A-Za-z]/.test(after) && !/^v\d/i.test(suffix)) continue;
+    return true;
+  }
+
+  return false;
+}
+
 async function fetchJson(request, url) {
   const res = await request(url, {
     headers: { Accept: "application/json" }
@@ -33,7 +66,7 @@ function magnet(hash, title) {
 export default new class SeaDexSubs {
   url = API_URL;
 
-  async single({ anilistId, titles, fetch: request = fetch }) {
+  async single({ anilistId, titles, episode, fetch: request = fetch }) {
     if (typeof navigator !== "undefined" && navigator.onLine === false) return [];
     if (!anilistId || !titles?.length) return [];
 
@@ -51,7 +84,8 @@ export default new class SeaDexSubs {
           torrent.infoHash &&
           "<redacted>" !== torrent.infoHash &&
           !torrent.dualAudio &&
-          files.length > 0
+          files.length > 0 &&
+          (!episode || (files.length === 1 && episodeMatches(files[0]?.name ?? "", episode)))
         );
       })
       .map(torrent => {

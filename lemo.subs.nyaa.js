@@ -119,7 +119,8 @@ function parseRss(xml, query) {
       const hash = nyaaTag(item, "infoHash").toLowerCase();
       if (!title || !hash || DUB_AUDIO_RE.test(title)) return null;
       if (!seasonMatches(title, expectedSeason)) return null;
-      if (query.episode && !episodeMatches(title, query.episode) && !rangeContainsEpisode(title, query.episode)) return null;
+      if (query.episode && !acceptableEpisodeResult(title, query.episode)) return null;
+      const exactEpisode = query.episode && episodeMatches(title, query.episode);
 
       const seeders = Number.parseInt(nyaaTag(item, "seeders") || "0", 10);
       const leechers = Number.parseInt(nyaaTag(item, "leechers") || "0", 10);
@@ -135,7 +136,7 @@ function parseRss(xml, query) {
         downloads,
         size: parseSize(nyaaTag(item, "size")),
         date: pubDate ? new Date(pubDate) : new Date(0),
-        accuracy: query.episode ? episodeMatches(title, query.episode) ? "high" : "medium" : "medium",
+        accuracy: query.episode ? exactEpisode ? "high" : "medium" : "medium",
         type: isBatchTitle(title) ? "batch" : undefined
       };
     })
@@ -143,30 +144,71 @@ function parseRss(xml, query) {
 }
 
 function episodeMatches(title, episode) {
-  const ep = String(episode);
-  const ep2 = ep.padStart(2, "0");
-  const ep3 = ep.padStart(3, "0");
-  return [
-    new RegExp(`(^|[^\\d])${ep2}([^\\d]|$)`),
-    new RegExp(`(^|[^\\d])${ep3}([^\\d]|$)`),
-    new RegExp(`e${ep2}([^\\d]|$)`, "i")
-  ].some(pattern => pattern.test(title));
+  const target = Number.parseInt(episode, 10);
+  if (!Number.isFinite(target)) return false;
+
+  const text = String(title);
+  const explicitEpisodes = [
+    ...text.matchAll(/\bS\d{1,2}\s*E\s*(\d{1,4})(?!\d)/gi),
+    ...text.matchAll(/\b(?:E|EP|EPS|Episode)\s*\.?\s*(\d{1,4})(?!\d)/gi)
+  ];
+
+  if (explicitEpisodes.length) {
+    return explicitEpisodes.some(match => Number.parseInt(match[1], 10) === target);
+  }
+
+  for (const match of text.matchAll(/\d{1,4}/g)) {
+    const value = match[0];
+    const parsed = Number.parseInt(value, 10);
+    if (parsed !== target) continue;
+
+    const index = match.index ?? 0;
+    const before = text[index - 1] ?? "";
+    const suffix = text.slice(index + value.length);
+    const after = suffix[0] ?? "";
+
+    if (value.length === 4 && parsed >= 1900 && parsed <= 2099) continue;
+    if (/[A-Za-z]/.test(before)) continue;
+    if (/[A-Za-z]/.test(after) && !/^v\d/i.test(suffix)) continue;
+    return true;
+  }
+
+  return false;
 }
 
 function rangeContainsEpisode(title, episode) {
   const ep = Number.parseInt(episode, 10);
   if (!Number.isFinite(ep)) return false;
 
+  return Boolean(rangeForEpisode(title, ep));
+}
+
+function rangeForEpisode(title, episode) {
+  const ep = Number.parseInt(episode, 10);
+  if (!Number.isFinite(ep)) return null;
+
   const ranges = [
     ...title.matchAll(/\bS\d{1,2}E(\d{1,4})\s*[-~]\s*E?(\d{1,4})\b/gi),
     ...title.matchAll(/\b(\d{1,4})\s*[-~]\s*(\d{1,4})\b/g)
   ];
 
-  return ranges.some(match => {
+  for (const match of ranges) {
     const start = Number.parseInt(match[1], 10);
     const end = Number.parseInt(match[2], 10);
-    return Number.isFinite(start) && Number.isFinite(end) && ep >= Math.min(start, end) && ep <= Math.max(start, end);
-  });
+    if (!Number.isFinite(start) || !Number.isFinite(end)) continue;
+
+    const low = Math.min(start, end);
+    const high = Math.max(start, end);
+    if (ep >= low && ep <= high) return { start: low, end: high, span: high - low + 1 };
+  }
+
+  return null;
+}
+
+function acceptableEpisodeResult(title, episode) {
+  if (!episode) return true;
+  if (rangeForEpisode(title, episode)) return false;
+  return episodeMatches(title, episode);
 }
 
 function isBatchTitle(title) {
@@ -270,7 +312,8 @@ async function search(query, suffixes, isBatch = false) {
   const episode = numbering.episode == null ? null : String(numbering.episode).padStart(2, "0");
   const season = numbering.season;
   const normalizedQuery = { ...query, episode: numbering.episode, expectedSeason: season };
-  const absolute = season && episode ? `S${String(season).padStart(2, "0")}E${episode}` : null;
+  const absoluteSeason = season ?? 1;
+  const absolute = episode ? `S${String(absoluteSeason).padStart(2, "0")}E${episode}` : null;
   const searches = [];
 
   for (const title of titles) {
