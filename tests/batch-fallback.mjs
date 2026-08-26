@@ -43,7 +43,8 @@ const nyaaFeed = `<?xml version="1.0"?><rss xmlns:nyaa="https://nyaa.si/xmlns/ny
   ${rssItem("Maou 2099 S01E01 1080p Multi-Subs", "5555555555555555555555555555555555555555")}
 </channel></rss>`;
 const nyaaResults = await nyaa.single({
-  titles: ["MAO"],
+  titles: [],
+  media: { title: { english: "MAO", romaji: "Mao" }, synonyms: [] },
   episode: 1,
   fetch: async () => response(nyaaFeed)
 });
@@ -83,7 +84,8 @@ const seaDexData = {
 };
 const seaDexResults = await seaDex.single({
   anilistId: 1,
-  titles: ["MAO"],
+  titles: [],
+  media: { title: { english: "MAO", romaji: "Mao" }, synonyms: [] },
   episode: 1,
   fetch: async () => response(seaDexData)
 });

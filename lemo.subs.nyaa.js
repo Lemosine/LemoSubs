@@ -287,6 +287,16 @@ function titleVariants(titles) {
   return [...new Set(variants)].slice(0, 8);
 }
 
+function queryTitles(query) {
+  const mediaTitles = query.media?.title ? Object.values(query.media.title) : [];
+  const synonyms = Array.isArray(query.media?.synonyms) ? query.media.synonyms : [];
+  const titles = Array.isArray(query.titles) ? query.titles : [];
+
+  return [...new Set([...titles, ...mediaTitles, ...synonyms]
+    .filter(title => typeof title === "string" && title.trim())
+    .map(title => title.trim()))];
+}
+
 function normalizeTitle(value) {
   return String(value)
     .normalize("NFKC")
@@ -331,14 +341,15 @@ function dedupe(results) {
 }
 
 async function search(query, suffixes, isBatch = false) {
-  if (!query.titles?.length) return [];
+  const availableTitles = queryTitles(query);
+  if (!availableTitles.length) return [];
 
   const request = query.fetch ?? fetch;
-  const titles = titleVariants(query.titles.slice(0, 3));
-  const numbering = releaseNumbering(query.titles, query.episode, query.anilistId);
+  const titles = titleVariants(availableTitles.slice(0, 3));
+  const numbering = releaseNumbering(availableTitles, query.episode, query.anilistId);
   const episode = numbering.episode == null ? null : String(numbering.episode).padStart(2, "0");
   const season = numbering.season;
-  const normalizedQuery = { ...query, episode: numbering.episode, expectedSeason: season };
+  const normalizedQuery = { ...query, titles: availableTitles, episode: numbering.episode, expectedSeason: season };
   const absoluteSeason = season ?? 1;
   const absolute = episode ? `S${String(absoluteSeason).padStart(2, "0")}E${episode}` : null;
   const searches = [];

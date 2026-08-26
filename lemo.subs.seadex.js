@@ -46,6 +46,16 @@ function videoFiles(files) {
   return files.filter(file => /\.(?:mkv|mp4|avi|webm|m4v|mov)$/i.test(file?.name ?? ""));
 }
 
+function queryTitles(titles, media) {
+  const mediaTitles = media?.title ? Object.values(media.title) : [];
+  const synonyms = Array.isArray(media?.synonyms) ? media.synonyms : [];
+  const supplied = Array.isArray(titles) ? titles : [];
+
+  return [...new Set([...supplied, ...mediaTitles, ...synonyms]
+    .filter(title => typeof title === "string" && title.trim())
+    .map(title => title.trim()))];
+}
+
 async function fetchJson(request, url) {
   const res = await request(url, {
     headers: { Accept: "application/json" }
@@ -71,9 +81,10 @@ function magnet(hash, title) {
 export default new class SeaDexSubs {
   url = API_URL;
 
-  async single({ anilistId, titles, episode, fetch: request = fetch }) {
+  async single({ anilistId, titles, media, episode, fetch: request = fetch }) {
     if (typeof navigator !== "undefined" && navigator.onLine === false) return [];
-    if (!anilistId || !titles?.length) return [];
+    const availableTitles = queryTitles(titles, media);
+    if (!anilistId || !availableTitles.length) return [];
 
     const filter = encodeURIComponent(`alID="${anilistId}"`);
     const data = await fetchJson(request, `${this.url}?page=1&perPage=200&filter=${filter}&skipTotal=1&expand=trs`);
@@ -106,7 +117,7 @@ export default new class SeaDexSubs {
         const videos = videoFiles(files);
         const title = videos.length === 1 && videos[0]?.name
           ? videos[0].name
-          : `[${torrent.releaseGroup ?? "SeaDex"}] ${titles[0]} English Subs`;
+          : `[${torrent.releaseGroup ?? "SeaDex"}] ${availableTitles[0]} English Subs`;
 
         return {
           hash: torrent.infoHash,
