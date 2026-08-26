@@ -1,4 +1,5 @@
 const API_URL = "https://releases.moe/api/collections/entries/records";
+const MAX_SAFE_BATCH_EPISODES = 36;
 
 const TRACKERS = [
   "http://nyaa.tracker.wf:7777/announce",
@@ -41,6 +42,10 @@ function episodeMatches(title, episode) {
   return false;
 }
 
+function videoFiles(files) {
+  return files.filter(file => /\.(?:mkv|mp4|avi|webm|m4v|mov)$/i.test(file?.name ?? ""));
+}
+
 async function fetchJson(request, url) {
   const res = await request(url, {
     headers: { Accept: "application/json" }
@@ -79,19 +84,28 @@ export default new class SeaDexSubs {
     return trs
       .filter(torrent => {
         const files = Array.isArray(torrent.files) ? torrent.files : [];
+        const videos = videoFiles(files);
+        const matches = episode
+          ? videos.filter(file => episodeMatches(file.name ?? "", episode))
+          : [];
+        const safeEpisodeMatch = !episode || (
+          matches.length === 1 &&
+          (videos.length === 1 || videos.length <= MAX_SAFE_BATCH_EPISODES)
+        );
 
         return (
           torrent.infoHash &&
           "<redacted>" !== torrent.infoHash &&
           !torrent.dualAudio &&
-          files.length > 0 &&
-          (!episode || (files.length === 1 && episodeMatches(files[0]?.name ?? "", episode)))
+          videos.length > 0 &&
+          safeEpisodeMatch
         );
       })
       .map(torrent => {
         const files = Array.isArray(torrent.files) ? torrent.files : [];
-        const title = 1 === files.length && files[0]?.name
-          ? files[0].name
+        const videos = videoFiles(files);
+        const title = videos.length === 1 && videos[0]?.name
+          ? videos[0].name
           : `[${torrent.releaseGroup ?? "SeaDex"}] ${titles[0]} English Subs`;
 
         return {
@@ -99,7 +113,7 @@ export default new class SeaDexSubs {
           link: magnet(torrent.infoHash, title),
           title,
           size: files.reduce((prev, curr) => prev + (curr.length ?? 0), 0),
-          type: torrent.isBest ? "best" : "alt",
+          type: videos.length > 1 ? "batch" : torrent.isBest ? "best" : "alt",
           date: new Date(torrent.created),
           seeders: 0,
           leechers: 0,

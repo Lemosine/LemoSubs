@@ -3,6 +3,8 @@ const CATEGORY = "1_2";
 const FILTER = "0";
 const TIMEOUT_MS = 6000;
 const MAX_SEARCHES = 24;
+const MAX_SAFE_BATCH_EPISODES = 36;
+const TITLE_STOP_WORDS = new Set(["a", "an", "and", "cour", "of", "part", "season", "the", "to"]);
 
 const TRACKERS = [
   "http://nyaa.tracker.wf:7777/announce",
@@ -118,9 +120,11 @@ function parseRss(xml, query) {
       const title = tag(item, "title");
       const hash = nyaaTag(item, "infoHash").toLowerCase();
       if (!title || !hash || DUB_AUDIO_RE.test(title)) return null;
+      if (!titleMatches(title, query.titles)) return null;
       if (!seasonMatches(title, expectedSeason)) return null;
       if (query.episode && !acceptableEpisodeResult(title, query.episode)) return null;
-      const exactEpisode = query.episode && episodeMatches(title, query.episode);
+      const episodeRange = query.episode && rangeForEpisode(title, query.episode);
+      const exactEpisode = query.episode && !episodeRange && episodeMatches(title, query.episode);
 
       const seeders = Number.parseInt(nyaaTag(item, "seeders") || "0", 10);
       const leechers = Number.parseInt(nyaaTag(item, "leechers") || "0", 10);
@@ -176,30 +180,26 @@ function episodeMatches(title, episode) {
   return false;
 }
 
-function rangeContainsEpisode(title, episode) {
-  const ep = Number.parseInt(episode, 10);
-  if (!Number.isFinite(ep)) return false;
-
-  return Boolean(rangeForEpisode(title, ep));
-}
-
 function rangeForEpisode(title, episode) {
   const ep = Number.parseInt(episode, 10);
   if (!Number.isFinite(ep)) return null;
 
   const ranges = [
-    ...title.matchAll(/\bS\d{1,2}E(\d{1,4})\s*[-~]\s*E?(\d{1,4})\b/gi),
-    ...title.matchAll(/\b(\d{1,4})\s*[-~]\s*(\d{1,4})\b/g)
+    ...title.matchAll(/\bS\d{1,2}E(\d{1,4})\s*[-~\u2013\u2014]\s*E?(\d{1,4})\b/gi),
+    ...title.matchAll(/\b(?:E|EP|EPS|Episodes?)?\s*(\d{1,4})\s*[-~\u2013\u2014]\s*(?:E|EP|EPS|Episodes?)?\s*(\d{1,4})\b/gi)
   ];
 
   for (const match of ranges) {
     const start = Number.parseInt(match[1], 10);
     const end = Number.parseInt(match[2], 10);
     if (!Number.isFinite(start) || !Number.isFinite(end)) continue;
+    if (start >= 1900 && end >= 1900) continue;
 
     const low = Math.min(start, end);
     const high = Math.max(start, end);
-    if (ep >= low && ep <= high) return { start: low, end: high, span: high - low + 1 };
+    const span = high - low + 1;
+    if (span < 2) continue;
+    if (ep >= low && ep <= high) return { start: low, end: high, span };
   }
 
   return null;
@@ -207,12 +207,13 @@ function rangeForEpisode(title, episode) {
 
 function acceptableEpisodeResult(title, episode) {
   if (!episode) return true;
-  if (rangeForEpisode(title, episode)) return false;
+  const range = rangeForEpisode(title, episode);
+  if (range) return range.span <= MAX_SAFE_BATCH_EPISODES;
   return episodeMatches(title, episode);
 }
 
 function isBatchTitle(title) {
-  return /batch|complete|\b\d{1,3}\s*[-~]\s*\d{1,3}\b|\bS\d{1,2}E\d{1,3}\s*[-~]\s*E?\d{1,3}\b/i.test(title);
+  return /batch|complete|\b\d{1,3}\s*[-~\u2013\u2014]\s*\d{1,3}\b|\bS\d{1,2}E\d{1,3}\s*[-~\u2013\u2014]\s*E?\d{1,3}\b/i.test(title);
 }
 
 function seasonNumber(title) {
@@ -284,6 +285,32 @@ function titleVariants(titles) {
   }
 
   return [...new Set(variants)].slice(0, 8);
+}
+
+function normalizeTitle(value) {
+  return String(value)
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+}
+
+function titleMatches(resultTitle, titles = []) {
+  const result = normalizeTitle(resultTitle);
+  const resultTokens = new Set(result.split(" ").filter(Boolean));
+
+  return titleVariants(titles).some(title => {
+    const candidate = normalizeTitle(title);
+    if (!candidate) return false;
+
+    const tokens = candidate.split(" ").filter(Boolean);
+    if (tokens.length === 1) return resultTokens.has(tokens[0]);
+    if (result.includes(candidate)) return true;
+
+    const significant = tokens.filter(token => token.length > 1 && !TITLE_STOP_WORDS.has(token));
+    return significant.length >= 2 && significant.every(token => resultTokens.has(token));
+  });
 }
 
 function applyExclusions(results, exclusions = []) {
