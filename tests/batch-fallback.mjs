@@ -33,6 +33,7 @@ function rssItem(title, hash) {
 const compactTitle = "MAO S01E01-E13 1080p Multi-Subs";
 const broadTitle = "Long Show S01E001-E170 1080p Multi-Subs";
 const exactTitle = "MAO S01E01 1080p Multi-Subs";
+const filteredMaoTitle = "MAO \u0e2b\u0e32\u0e0d\u0e2a\u0e39\u0e49\u0e1e\u0e25\u0e34\u0e01\u0e0a\u0e30\u0e15\u0e32\u0e2d\u0e32\u0e16\u0e23\u0e23\u0e1e\u0e13\u0e4c";
 
 const nyaa = await loadExtension("lemo.subs.nyaa.js");
 const nyaaFeed = `<?xml version="1.0"?><rss xmlns:nyaa="https://nyaa.si/xmlns/nyaa"><channel>
@@ -43,10 +44,15 @@ const nyaaFeed = `<?xml version="1.0"?><rss xmlns:nyaa="https://nyaa.si/xmlns/ny
   ${rssItem("Maou 2099 S01E01 1080p Multi-Subs", "5555555555555555555555555555555555555555")}
 </channel></rss>`;
 const nyaaResults = await nyaa.single({
-  titles: [],
-  media: { title: { english: "MAO", romaji: "Mao" }, synonyms: [] },
+  titles: [filteredMaoTitle],
+  media: {
+    title: { romaji: "MAO", english: "MAO", native: "MAO", userPreferred: "MAO" },
+    synonyms: ["\u30de\u30aa", filteredMaoTitle]
+  },
   episode: 1,
-  fetch: async () => response(nyaaFeed)
+  fetch: async url => response(new URL(url).searchParams.get("q")?.includes(filteredMaoTitle)
+    ? "<?xml version=\"1.0\"?><rss><channel></channel></rss>"
+    : nyaaFeed)
 });
 assert.deepEqual(nyaaResults.map(item => item.hash).sort(), [
   "1111111111111111111111111111111111111111",
@@ -84,8 +90,11 @@ const seaDexData = {
 };
 const seaDexResults = await seaDex.single({
   anilistId: 1,
-  titles: [],
-  media: { title: { english: "MAO", romaji: "Mao" }, synonyms: [] },
+  titles: [filteredMaoTitle],
+  media: {
+    title: { romaji: "MAO", english: "MAO", native: "MAO", userPreferred: "MAO" },
+    synonyms: ["\u30de\u30aa", filteredMaoTitle]
+  },
   episode: 1,
   fetch: async () => response(seaDexData)
 });

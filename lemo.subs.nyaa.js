@@ -292,7 +292,7 @@ function queryTitles(query) {
   const synonyms = Array.isArray(query.media?.synonyms) ? query.media.synonyms : [];
   const titles = Array.isArray(query.titles) ? query.titles : [];
 
-  return [...new Set([...titles, ...mediaTitles, ...synonyms]
+  return [...new Set([...mediaTitles, ...titles, ...synonyms]
     .filter(title => typeof title === "string" && title.trim())
     .map(title => title.trim()))];
 }
