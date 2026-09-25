@@ -56,21 +56,35 @@ function queryTitles(titles, media) {
     .map(title => title.trim()))];
 }
 
+const REQUEST_TIMEOUT_MS = 6000;
+
 async function fetchJson(request, url) {
-  const res = await request(url, {
-    headers: { Accept: "application/json" }
+  const controller = new AbortController();
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      reject(new Error("SeaDex did not respond within 6 seconds. Try again later."));
+      controller.abort();
+    }, REQUEST_TIMEOUT_MS);
   });
-
-  if (!res.ok) return null;
-
-  const text = await res.text();
-  const trimmed = text.trim();
-  if (!trimmed || (!trimmed.startsWith("{") && !trimmed.startsWith("["))) return null;
+  const response = (async () => {
+    const res = await request(url, {
+      signal: controller.signal,
+      headers: { Accept: "application/json" }
+    });
+    if (!res.ok) throw new Error("SeaDex returned HTTP " + res.status + ".");
+    const text = await res.text();
+    try {
+      return JSON.parse(text);
+    } catch {
+      throw new Error("SeaDex returned an invalid response instead of JSON.");
+    }
+  })();
 
   try {
-    return JSON.parse(trimmed);
-  } catch {
-    return null;
+    return await Promise.race([response, timeout]);
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -142,12 +156,9 @@ export default new class SeaDexSubs {
     return [];
   }
 
-  async test() {
-    try {
-      if (!(await fetch(this.url)).ok) throw new Error(`Failed to load data from ${this.url}! Is the site down?`);
-      return true;
-    } catch {
-      throw new Error(`Could not reach ${this.url}! Does the site work in your region?`);
-    }
+  async test({ fetch: request = fetch } = {}) {
+    const data = await fetchJson(request, this.url + "?perPage=1");
+    if (!Array.isArray(data?.items)) throw new Error("SeaDex returned an invalid response.");
+    return true;
   }
 }();

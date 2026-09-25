@@ -3,21 +3,35 @@ const DUB_AUDIO_RE = /\b(dubbed|dual[-\s._]?audio|dual|english[-\s._]?(?:dub|aud
 const DUB_EXCLUSIONS = ["dubbed", "dual audio", "dual-audio", "dual.audio", "dual_audio", "multi-audio", "multi audio", "english dub", "eng dub"];
 const MAX_SAFE_BATCH_EPISODES = 36;
 
+const REQUEST_TIMEOUT_MS = 6000;
+
 async function fetchJson(request, url) {
-  const res = await request(url, {
-    headers: { Accept: "application/json" }
+  const controller = new AbortController();
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      reject(new Error("AnimeTosho did not respond within 6 seconds. Try again later."));
+      controller.abort();
+    }, REQUEST_TIMEOUT_MS);
   });
-
-  if (!res.ok) return null;
-
-  const text = await res.text();
-  const trimmed = text.trim();
-  if (!trimmed || (!trimmed.startsWith("{") && !trimmed.startsWith("["))) return null;
+  const response = (async () => {
+    const res = await request(url, {
+      signal: controller.signal,
+      headers: { Accept: "application/json" }
+    });
+    if (!res.ok) throw new Error("AnimeTosho returned HTTP " + res.status + ".");
+    const text = await res.text();
+    try {
+      return JSON.parse(text);
+    } catch {
+      throw new Error("AnimeTosho returned an invalid response instead of JSON.");
+    }
+  })();
 
   try {
-    return JSON.parse(trimmed);
-  } catch {
-    return null;
+    return await Promise.race([response, timeout]);
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -149,12 +163,10 @@ export default new class ToshoSubs {
     return Array.isArray(data) && data.length ? this.map(data, false, options?.useTorrent) : [];
   }
 
-  async test() {
-    try {
-      if (!(await fetch(this.url)).ok) throw new Error(`Failed to load data from ${this.url}! Is the site down?`);
-      return true;
-    } catch {
-      throw new Error(`Could not reach ${this.url}! Does the site work in your region?`);
-    }
+  async test({ fetch: request = fetch } = {}) {
+    // The archive disabled unfiltered feeds; filtered historical searches still work.
+    const data = await fetchJson(request, this.url + "?aid=1");
+    if (!Array.isArray(data)) throw new Error("AnimeTosho archive returned an invalid feed.");
+    return true;
   }
 }();

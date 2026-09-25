@@ -3,7 +3,7 @@
     "manifestVersion": 2,
     "id": "hayase.extension.lemosine.subs.seadex",
     "name": "Lemo Subs SeaDex",
-    "version": "0.1.4",
+    "version": "0.1.5",
     "description": "English-subtitled torrent results from SeaDex/Releases.moe.",
     "type": "torrent",
     "accuracy": "high",
@@ -12,13 +12,13 @@
     "languages": ["US"],
     "icon": "https://webtorrent.io/img/webtorrent-small.png",
     "update": "https://raw.githubusercontent.com/Lemosine/LemoSubs/main/index.json",
-    "code": "https://raw.githubusercontent.com/Lemosine/LemoSubs/main/lemo.subs.seadex.js?v=0.1.4"
+    "code": "https://raw.githubusercontent.com/Lemosine/LemoSubs/main/lemo.subs.seadex.js?v=0.1.5"
   },
   {
     "manifestVersion": 2,
     "id": "hayase.extension.lemosine.subs.nyaa",
     "name": "Lemo Subs Nyaa",
-    "version": "0.1.4",
+    "version": "0.1.5",
     "description": "English-subtitled anime torrents from Nyaa.si.",
     "type": "torrent",
     "accuracy": "low",
@@ -29,13 +29,13 @@
     "url": "aHR0cHM6Ly9ueWFhLnNp",
     "icon": "https://nyaa.si/static/favicon.png",
     "update": "https://raw.githubusercontent.com/Lemosine/LemoSubs/main/index.json",
-    "code": "https://raw.githubusercontent.com/Lemosine/LemoSubs/main/lemo.subs.nyaa.js?v=0.1.4"
+    "code": "https://raw.githubusercontent.com/Lemosine/LemoSubs/main/lemo.subs.nyaa.js?v=0.1.5"
   },
   {
     "manifestVersion": 2,
     "id": "hayase.extension.lemosine.subs.nekobt",
     "name": "Lemo Subs NekoBT",
-    "version": "0.1.2",
+    "version": "0.1.3",
     "description": "English-subtitled torrent results from NekoBT.",
     "type": "torrent",
     "accuracy": "high",
@@ -46,14 +46,14 @@
     "url": "aHR0cHM6Ly9uZWtvYnQudG8vYXBpL3YxLw==",
     "icon": "https://nekobt.to/cdn/pfp/null/64",
     "update": "https://raw.githubusercontent.com/Lemosine/LemoSubs/main/index.json",
-    "code": "https://raw.githubusercontent.com/Lemosine/LemoSubs/main/lemo.subs.nekobt.js?v=0.1.2"
+    "code": "https://raw.githubusercontent.com/Lemosine/LemoSubs/main/lemo.subs.nekobt.js?v=0.1.3"
   },
   {
     "manifestVersion": 2,
     "id": "hayase.extension.lemosine.subs.animetosho",
-    "name": "Lemo Subs AnimeTosho",
-    "version": "0.1.2",
-    "description": "English-subtitled AnimeTosho torrent results by AniDB episode or anime id.",
+    "name": "Lemo Subs AnimeTosho (Archive)",
+    "version": "0.1.3",
+    "description": "English-subtitled archive. AnimeTosho stopped updates in May 2026; its feed is scheduled to close in October 2026.",
     "type": "torrent",
     "accuracy": "high",
     "ratio": 0,
@@ -62,7 +62,7 @@
     "url": "aHR0cHM6Ly9mZWVkLmFuaW1ldG9zaG8ub3JnL2pzb24=",
     "icon": "https://animetosho.org/inc/favicon.ico",
     "update": "https://raw.githubusercontent.com/Lemosine/LemoSubs/main/index.json",
-    "code": "https://raw.githubusercontent.com/Lemosine/LemoSubs/main/lemo.subs.animetosho.js?v=0.1.2",
+    "code": "https://raw.githubusercontent.com/Lemosine/LemoSubs/main/lemo.subs.animetosho.js?v=0.1.3",
     "options": {
       "useTorrent": {
         "type": "boolean",
