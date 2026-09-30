@@ -364,7 +364,11 @@ async function search(query, isBatch = false) {
   const episode = numbering.episode == null ? null : String(numbering.episode).padStart(2, "0");
   const season = numbering.season;
   const normalizedQuery = { ...query, titles: availableTitles, episode: numbering.episode, expectedSeason: season };
-  const searches = episode && !isBatch ? titles.map(title => `${title} ${episode}`) : [];
+  const episodeToken = episode ? `S${String(season ?? 1).padStart(2, "0")}E${episode}` : null;
+  // Nyaa tokenizes S01E08 separately from 08; query both forms for every alias.
+  const searches = episode && !isBatch
+    ? titles.flatMap(title => [`${title} ${episodeToken}`, `${title} ${episode}`])
+    : [];
   // Broad queries also find episode ranges; audio and episode checks stay local.
   const attempts = [...new Set([...searches, ...titles])];
   const settled = await Promise.allSettled(attempts.map(async item => {

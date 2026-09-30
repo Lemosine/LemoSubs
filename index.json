@@ -18,7 +18,7 @@
     "manifestVersion": 2,
     "id": "hayase.extension.lemosine.subs.nyaa",
     "name": "Lemo Subs Nyaa",
-    "version": "0.1.5",
+    "version": "0.1.6",
     "description": "English-subtitled anime torrents from Nyaa.si.",
     "type": "torrent",
     "accuracy": "low",
@@ -29,7 +29,7 @@
     "url": "aHR0cHM6Ly9ueWFhLnNp",
     "icon": "https://nyaa.si/static/favicon.png",
     "update": "https://raw.githubusercontent.com/Lemosine/LemoSubs/main/index.json",
-    "code": "https://raw.githubusercontent.com/Lemosine/LemoSubs/main/lemo.subs.nyaa.js?v=0.1.5"
+    "code": "https://raw.githubusercontent.com/Lemosine/LemoSubs/main/lemo.subs.nyaa.js?v=0.1.6"
   },
   {
     "manifestVersion": 2,
