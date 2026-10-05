@@ -2,6 +2,11 @@ const DOMAIN = "https://nyaa.si";
 const CATEGORY = "1_2";
 const FILTER = "0";
 const TIMEOUT_MS = 6000;
+const SEARCH_TIMEOUT_MS = 14000;
+const REQUEST_INTERVAL_MS = 1000;
+const COOLDOWN_MS = 60000;
+const CACHE_TTL_MS = 60000;
+const MAX_CACHED_FEEDS = 32;
 const MAX_SEARCH_TITLES = 3;
 const feedRequests = new WeakMap();
 const MAX_SAFE_BATCH_EPISODES = 36;
@@ -74,19 +79,77 @@ function buildUrl(query) {
   return `${DOMAIN}/?${params.toString()}`;
 }
 
-function fetchText(request, url) {
-  let pending = feedRequests.get(request);
-  if (!pending) {
-    pending = new Map();
-    feedRequests.set(request, pending);
+function searchTimeoutError() {
+  const error = new Error("Nyaa search timed out. Please try again later.");
+  error.code = "SEARCH_TIMEOUT";
+  return error;
+}
+
+function rateLimitError(state) {
+  const seconds = Math.max(1, Math.ceil((state.retryAt - Date.now()) / 1000));
+  const error = new Error(`Nyaa is rate-limiting requests (HTTP 429). Wait ${seconds} seconds before searching again.`);
+  error.code = "RATE_LIMITED";
+  return error;
+}
+
+function retryDelay(value) {
+  const seconds = /^\d+$/.test(value ?? "") ? Number(value) : NaN;
+  const delay = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(value) - Date.now();
+  return Number.isFinite(delay) && delay >= 0 ? Math.max(1000, delay) : COOLDOWN_MS;
+}
+
+function fetchText(request, url, deadline = Date.now() + SEARCH_TIMEOUT_MS) {
+  let state = feedRequests.get(request);
+  if (!state) {
+    state = { pending: new Map(), cache: new Map(), tail: Promise.resolve(), nextStart: 0, retryAt: 0 };
+    feedRequests.set(request, state);
   }
-  if (pending.has(url)) return pending.get(url);
-  const task = requestText(request, url).finally(() => pending.delete(url));
-  pending.set(url, task);
+  const cached = state.cache.get(url);
+  if (cached && cached.expires > Date.now()) return Promise.resolve(cached.xml);
+  state.cache.delete(url);
+  if (state.retryAt > Date.now()) return Promise.reject(rateLimitError(state));
+  if (state.pending.has(url)) return state.pending.get(url);
+
+  let timer;
+  let expired = false;
+  // Single and batch calls share this queue, including their response body reads.
+  const queued = state.tail.then(async () => {
+    if (expired || Date.now() >= deadline) throw searchTimeoutError();
+    if (state.retryAt > Date.now()) throw rateLimitError(state);
+    const delay = Math.max(0, state.nextStart - Date.now());
+    if (Date.now() + delay >= deadline) throw searchTimeoutError();
+    if (delay) await new Promise(resolve => setTimeout(resolve, delay));
+    if (expired || Date.now() >= deadline) throw searchTimeoutError();
+    if (state.retryAt > Date.now()) throw rateLimitError(state);
+
+    state.nextStart = Date.now() + REQUEST_INTERVAL_MS;
+    const xml = await requestText(request, url, state, Math.min(TIMEOUT_MS, deadline - Date.now()));
+    if (!expired) {
+      for (const [key, value] of state.cache) {
+        if (value.expires <= Date.now()) state.cache.delete(key);
+      }
+      state.cache.set(url, { xml, expires: Date.now() + CACHE_TTL_MS });
+      if (state.cache.size > MAX_CACHED_FEEDS) state.cache.delete(state.cache.keys().next().value);
+    }
+    return xml;
+  });
+  state.tail = queued.catch(() => {});
+
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      expired = true;
+      reject(searchTimeoutError());
+    }, Math.max(0, deadline - Date.now()));
+  });
+  const task = Promise.race([queued, timeout]).finally(() => {
+    clearTimeout(timer);
+    state.pending.delete(url);
+  });
+  state.pending.set(url, task);
   return task;
 }
 
-async function requestText(request, url) {
+async function requestText(request, url, state, timeoutMs) {
   const controller = new AbortController();
   let timer;
 
@@ -94,7 +157,7 @@ async function requestText(request, url) {
     timer = setTimeout(() => {
       controller.abort();
       reject(new Error("Nyaa did not respond in time."));
-    }, TIMEOUT_MS);
+    }, timeoutMs);
   });
 
   const response = (async () => {
@@ -103,6 +166,10 @@ async function requestText(request, url) {
       headers: { Accept: "application/rss+xml, application/xml, text/xml" }
     });
 
+    if (res.status === 429) {
+      state.retryAt = Math.max(state.retryAt, Date.now() + retryDelay(res.headers?.get?.("Retry-After")));
+      throw rateLimitError(state);
+    }
     if (!res.ok) throw new Error(`Nyaa returned HTTP ${res.status}.`);
     const xml = await res.text();
     if (!/<rss\b/i.test(xml)) throw new Error("Nyaa returned a page instead of an RSS feed.");
@@ -114,6 +181,7 @@ async function requestText(request, url) {
   try {
     return await Promise.race([response, timeout]);
   } catch (error) {
+    if (error.code === "RATE_LIMITED") throw error;
     if (error.name === "AbortError") throw new Error("Nyaa did not respond in time.");
     throw new Error(`Could not reach Nyaa: ${error.message}`);
   } finally {
@@ -371,18 +439,23 @@ async function search(query, isBatch = false) {
     : [];
   // Broad queries also find episode ranges; audio and episode checks stay local.
   const attempts = [...new Set([...searches, ...titles])];
-  const settled = await Promise.allSettled(attempts.map(async item => {
-    const xml = await fetchText(request, buildUrl(item));
-    return parseRss(xml, normalizedQuery);
-  }));
-
-  const results = settled
-    .filter(item => item.status === "fulfilled")
-    .flatMap(item => item.value);
-
-  if (settled.every(item => item.status === "rejected")) throw settled[0].reason;
-
-  return applyExclusions(dedupe(results), normalizedQuery.exclusions);
+  const deadline = Date.now() + SEARCH_TIMEOUT_MS;
+  let successfulRequests = 0;
+  let lastError;
+  for (const item of attempts) {
+    try {
+      const xml = await fetchText(request, buildUrl(item), deadline);
+      successfulRequests++;
+      const results = applyExclusions(dedupe(parseRss(xml, normalizedQuery)), normalizedQuery.exclusions);
+      if (results.length) return results;
+    } catch (error) {
+      lastError = error;
+      if (error.code === "RATE_LIMITED" || error.code === "SEARCH_TIMEOUT") throw error;
+    }
+    if (Date.now() >= deadline) throw searchTimeoutError();
+  }
+  if (!successfulRequests && lastError) throw lastError;
+  return [];
 }
 
 export default {

@@ -47,7 +47,7 @@ assert.deepEqual(single.map(result => result.hash), ["a".repeat(40)]);
 assert.deepEqual(batch.map(result => result.hash), ["a".repeat(40)]);
 assert.equal(calls.length, new Set(calls).size, "single/batch must share pending requests");
 assert.ok(calls.length <= 9, "three title aliases should need at most nine Nyaa requests");
-assert.ok(calls.includes("bleach thousand year blood war the calamity 01"));
+assert.ok(calls.some(q => q.startsWith("bleach thousand year blood war the calamity")));
 
 // Metadata from split seasons must still search the shorter release title.
 const seasonQueries = [];
