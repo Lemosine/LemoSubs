@@ -70,5 +70,20 @@
         "default": false
       }
     }
+  },
+  {
+    "manifestVersion": 2,
+    "id": "hayase.extension.lemosine.subs.knaben",
+    "name": "Lemo Subs Knaben",
+    "version": "0.1.0",
+    "description": "Anime torrent backup from Knaben. Keeps English-subtitle candidates and excludes dub/dual-audio labels.",
+    "type": "torrent",
+    "accuracy": "low",
+    "ratio": 0,
+    "media": "sub",
+    "languages": ["US"],
+    "icon": "https://webtorrent.io/img/webtorrent-small.png",
+    "update": "https://raw.githubusercontent.com/Lemosine/LemoSubs/main/index.json",
+    "code": "https://raw.githubusercontent.com/Lemosine/LemoSubs/main/lemo.subs.knaben.js?v=0.1.0"
   }
 ]
