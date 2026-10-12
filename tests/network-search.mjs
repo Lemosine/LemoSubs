@@ -101,16 +101,28 @@ assert.deepEqual(partial.map(result => result.hash), ["a".repeat(40)]);
 
 const tosho = Object.entries(extensions).find(([name]) => name.startsWith("AnimeTosho"))?.[1];
 assert.ok(tosho);
-let probe;
-assert.equal(await tosho.test({ fetch: async url => {
-  probe = new URL(url);
-  return response([]);
-}}), true);
-assert.equal(probe.searchParams.get("aid"), "1");
-await assert.rejects(tosho.single({ anidbEid: 1,
-  fetch: async () => response("<html>Unavailable</html>") }), /instead of JSON/);
-await assert.rejects(tosho.test({ fetch: async () =>
-  ({ ok: false, status: 503 }) }), /HTTP 503/);
+const retiredConfig = configs.find(config => config.name.includes("AnimeTosho"));
+assert.match(retiredConfig.name, /\(Retired\)$/);
+assert.equal(retiredConfig.url, undefined, "retired providers need no network permission");
+const originalFetch = globalThis.fetch;
+let retiredRequests = 0;
+const retiredFetch = async () => {
+  retiredRequests++;
+  throw new Error("The retired feed must never be contacted");
+};
+try {
+  globalThis.fetch = retiredFetch;
+  await assert.rejects(tosho.test(), /retired.*Disable/);
+  await assert.rejects(tosho.test({ fetch: retiredFetch }), /retired.*Disable/);
+  const retiredQuery = { anidbEid: 1, anidbAid: 1, episode: 1, fetch: retiredFetch };
+  for (const method of ["single", "batch", "movie"]) {
+    assert.deepEqual(await tosho[method](), []);
+    assert.deepEqual(await tosho[method](retiredQuery, { useTorrent: true }), []);
+  }
+  assert.equal(retiredRequests, 0);
+} finally {
+  globalThis.fetch = originalFetch;
+}
 
 const neko = extensions.NekoBT;
 assert.deepEqual(await neko.single({ episode: 1,
@@ -127,7 +139,7 @@ assert.equal(episodeID, "102", "missing TVDB episode ids must not select episode
 
 // Real timers test both a stuck fetch and a stuck body, including transports that ignore abort.
 const started = Date.now();
-await Promise.all(Object.values(extensions).flatMap(extension =>
+await Promise.all(Object.values(extensions).filter(extension => extension !== tosho).flatMap(extension =>
   [false, true].map(async stalledBody => {
     let signal;
     await assert.rejects(extension.test({ fetch: async (_url, options) => {
@@ -138,4 +150,4 @@ await Promise.all(Object.values(extensions).flatMap(extension =>
   })
 ));
 assert.ok(Date.now() - started < 9000, "requests must finish before Hayase's 20-second timeout");
-console.log("Network timeout, archive health, alternate title and request-sharing tests passed.");
+console.log("Network timeout, provider retirement, alternate title and request-sharing tests passed.");

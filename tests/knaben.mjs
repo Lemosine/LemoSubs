@@ -32,6 +32,31 @@ async function settle(promise, advance) {
   return done.value;
 }
 
+test("manifest registers Knaben's API for Hayase desktop cross-origin requests", async () => {
+  // Hayase storage.ts decodes config.url; Electron app.ts matches request URL prefixes.
+  assert.equal(atob(config.url), "https://api.knaben.org/v2/");
+  const permitted = configs.filter(item => item.url).map(item => atob(item.url));
+  let calls = 0;
+  assert.equal(await extension.test({ fetch: async url => {
+    calls++;
+    assert.ok(permitted.some(prefix => url.startsWith(prefix)),
+      "a Node fetch succeeding does not establish Hayase CORS permission");
+    return response({ hits: [] });
+  }}), true);
+  assert.equal(calls, 1);
+  assert.equal("https://api.knaben.org.evil.invalid/v2/search".startsWith(atob(config.url)), false);
+  assert.equal("https://api.knaben.org/v1".startsWith(atob(config.url)), false);
+  for (const item of configs) {
+    assert.equal(item.manifestVersion, 2);
+    assert.equal(item.type, "torrent");
+    assert.equal(new URL(item.code).searchParams.get("v"), item.version);
+    const file = new URL(item.code).pathname.split("/").at(-1);
+    const code = await readFile(new URL("../" + file, import.meta.url), "utf8");
+    const mod = (await import("data:text/javascript;base64," + Buffer.from(code).toString("base64"))).default;
+    for (const method of ["test", "single", "batch", "movie"]) assert.equal(typeof mod[method], "function");
+  }
+});
+
 test("valid manifest, standalone exports and fail-closed title/episode/audio/category filtering", async t => {
   const advance = timer(t);
   assert.equal(config.type, "torrent");
@@ -58,6 +83,7 @@ test("valid manifest, standalone exports and fail-closed title/episode/audio/cat
     calls.push(parsed.searchParams.get("q"));
     assert.equal(parsed.origin, "https://api.knaben.org");
     assert.equal(parsed.pathname, "/v2/search");
+    assert.ok(url.startsWith(atob(config.url)));
     assert.equal(parsed.searchParams.get("c"), "6000000");
     assert.equal(parsed.searchParams.has("unsafe"), false);
     assert.equal(parsed.searchParams.has("xxx"), false);

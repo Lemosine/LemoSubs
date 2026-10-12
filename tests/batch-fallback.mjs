@@ -126,19 +126,7 @@ const nekoResults = await neko.single({
 assert.deepEqual(nekoResults.map(item => item.hash).sort(), ["compact", "exact"]);
 assert.equal(nekoResults.find(item => item.hash === "compact")?.type, "batch");
 
-const animeTosho = await loadExtension("lemo.subs.animetosho.js");
-const animeToshoResults = await animeTosho.batch({
-  anidbAid: 1,
-  episode: 1,
-  fetch: async () => response([
-    { title: compactTitle, num_files: 13, info_hash: "compact", magnet_uri: "magnet:?compact" },
-    { title: broadTitle, num_files: 170, info_hash: "broad", magnet_uri: "magnet:?broad" }
-  ])
-}, {});
-assert.deepEqual(animeToshoResults.map(item => item.hash), ["compact"]);
-assert.equal(animeToshoResults[0]?.type, "batch");
-
-for (const extension of [nyaa, seaDex, neko, animeTosho]) {
+for (const extension of [nyaa, seaDex, neko]) {
   for (const method of ["test", "single", "batch", "movie"]) {
     assert.equal(typeof extension[method], "function");
   }
