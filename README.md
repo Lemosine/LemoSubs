@@ -39,6 +39,15 @@ Connection failures, HTTP errors and malformed responses remain errors, not
 "no matches". Episode and audio filters are unchanged; no automatic retries,
 proxy, credentials or extra endpoints were added.
 
+SeaDex 0.1.7 also admits large series packs when their file list proves
+a complete, unique `S01E1...N` sequence matching the known catalog episode
+count. This restores long-running series previously blocked by the blanket
+36-video limit. The main filename stem must remain consistent; season-zero
+extras are separate from the episode count. Missing episodes, duplicates,
+restarted seasons, ranges, fractional episodes and ambiguous target matches
+stay excluded. Unverified large packs from title-only searches remain blocked.
+The same rule applies to Lemo Dubs and Lemo Subs with their own audio filters.
+
 Nyaa caches up to 32 successful feeds for one minute, reapplying the current
 episode/audio filters on reuse. HTTP 429 stops queued requests and starts a
 cooldown using the server's Retry-After header, or one minute if it is absent

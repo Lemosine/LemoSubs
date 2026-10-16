@@ -3,7 +3,7 @@
     "manifestVersion": 2,
     "id": "hayase.extension.lemosine.subs.seadex",
     "name": "Lemo Subs SeaDex",
-    "version": "0.1.6",
+    "version": "0.1.7",
     "url": "aHR0cHM6Ly9yZWxlYXNlcy5tb2UvYXBpL2NvbGxlY3Rpb25zL2VudHJpZXMv",
     "description": "English-subtitled torrent results from SeaDex/Releases.moe.",
     "type": "torrent",
@@ -13,7 +13,7 @@
     "languages": ["US"],
     "icon": "https://webtorrent.io/img/webtorrent-small.png",
     "update": "https://raw.githubusercontent.com/Lemosine/LemoSubs/main/index.json",
-    "code": "https://raw.githubusercontent.com/Lemosine/LemoSubs/main/lemo.subs.seadex.js?v=0.1.6"
+    "code": "https://raw.githubusercontent.com/Lemosine/LemoSubs/main/lemo.subs.seadex.js?v=0.1.7"
   },
   {
     "manifestVersion": 2,

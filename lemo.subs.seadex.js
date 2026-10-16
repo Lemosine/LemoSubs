@@ -46,6 +46,35 @@ function videoFiles(files) {
   return files.filter(file => /\.(?:mkv|mp4|avi|webm|m4v|mov)$/i.test(file?.name ?? ""));
 }
 
+function hasCompleteAbsoluteNumbering(videos, episodeCount) {
+  const count = Number(episodeCount);
+  if (!Number.isInteger(count) || count <= MAX_SAFE_BATCH_EPISODES) return false;
+
+  // Large packs need a complete, non-restarting sequence that Hayase can resolve by filename.
+  const episodes = new Set();
+  let series;
+  for (const file of videos) {
+    const name = String(file.name ?? "").split(/[\\/]/).at(-1);
+    if (/\bS0{1,2}[._ -]+E\d{1,4}(?!\d)/i.test(name)) continue;
+    const tokens = [...name.matchAll(/\bS(\d{1,2})E(\d{1,4})(?!\d)/gi)];
+    if (tokens.length !== 1) return false;
+    const suffix = name.slice(tokens[0].index + tokens[0][0].length);
+    if (/^\.\d+(?![\dp])|^\s*[-~+&,\u2013\u2014]\s*(?:S\d{1,2})?E?\s*\d/i.test(suffix)) return false;
+    const season = Number(tokens[0][1]);
+    if (season === 0) continue;
+
+    const episode = Number(tokens[0][2]);
+    if (season !== 1 || episode < 1 || episode > count || episodes.has(episode)) return false;
+    const stem = name.slice(0, tokens[0].index)
+      .replace(/\[[^\]]*\]/g, "").normalize("NFKC").toLowerCase()
+      .replace(/[._-]+/g, " ").replace(/\s+/g, " ").trim();
+    if (!stem || (series && stem !== series)) return false;
+    series = stem;
+    episodes.add(episode);
+  }
+  return episodes.size === count;
+}
+
 function queryTitles(titles, media) {
   const mediaTitles = media?.title ? Object.values(media.title) : [];
   const synonyms = Array.isArray(media?.synonyms) ? media.synonyms : [];
@@ -103,7 +132,7 @@ function magnet(hash, title) {
 export default new class SeaDexSubs {
   url = API_URL;
 
-  async single({ anilistId, titles, media, episode, fetch: request = fetch }) {
+  async single({ anilistId, titles, media, episode, episodeCount, fetch: request = fetch }) {
     if (typeof navigator !== "undefined" && navigator.onLine === false) return [];
     const availableTitles = queryTitles(titles, media);
     if (!anilistId || !availableTitles.length) return [];
@@ -123,7 +152,8 @@ export default new class SeaDexSubs {
           : [];
         const safeEpisodeMatch = !episode || (
           matches.length === 1 &&
-          (videos.length === 1 || videos.length <= MAX_SAFE_BATCH_EPISODES)
+          (videos.length <= MAX_SAFE_BATCH_EPISODES ||
+            hasCompleteAbsoluteNumbering(videos, episodeCount ?? media?.episodes))
         );
 
         return (

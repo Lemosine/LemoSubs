@@ -57,6 +57,82 @@ test("SeaDex distinguishes connection, HTTP, HTML and invalid JSON shape from va
   assert.deepEqual(await extension.single(query(async () => response({ items: [] }))), []);
 });
 
+test("SeaDex accepts complete absolute-numbered long series with a known catalog count", async () => {
+  const isDub = config.media === "dub";
+  for (const [count, target] of [[52, 41], [170, 131], [170, 132]]) {
+    const files = Array.from({ length: count }, (_, i) => ({
+      name: "Example.Long.Show.S01E" + String(i + 1).padStart(2, "0") + ".1080p.mkv", length: 100
+    }));
+    const data = { items: [{ expand: { trs: [{
+      infoHash: "a".repeat(40), dualAudio: isDub, files: files.toReversed()
+    }] } }] };
+    const results = await extension.single({
+      anilistId: 1, titles: ["Example Long Show"], episode: target, episodeCount: count,
+      fetch: async () => response(data)
+    });
+    assert.deepEqual(results.map(item => item.hash), ["a".repeat(40)]);
+    assert.equal(results[0].type, "batch");
+  }
+});
+
+test("SeaDex keeps uncertain, partial and restarted large packs out", async () => {
+  const files = Array.from({ length: 170 }, (_, i) => ({
+    name: "Example.Long.Show.S01E" + String(i + 1).padStart(2, "0") + ".1080p.mkv", length: 100
+  }));
+  const changed = (index, name) => files.map((file, i) => i === index ? { ...file, name } : file);
+  for (const [label, candidates, count, episode = 131] of [
+    ["unknown catalog count", files, undefined],
+    ["wrong catalog count", files, 169],
+    ["catalog count exceeds files", files, 171],
+    ["invalid catalog count", files, "unknown"],
+    ["missing requested episode", files.filter((_, i) => i !== 130), 170],
+    ["missing another episode", files.filter((_, i) => i !== 10), 170],
+    ["duplicate episode", [...files, files[0]], 170],
+    ["restarted season", changed(12, "Example.Long.Show.S02E13.1080p.mkv"), 170],
+    ["different series", changed(12, "Unrelated.Show.S01E13.1080p.mkv"), 170],
+    ["unclear filename", [...files, { name: "Extras.mkv", length: 100 }], 170],
+    ["multiple episode tokens", changed(12, "Example.Long.Show.S01E13.S01E14.mkv"), 170],
+    ["episode range", changed(130, "Example.Long.Show.S01E131-E132.mkv"), 170],
+    ["combined episodes", changed(130, "Example.Long.Show.S01E131+132.mkv"), 170],
+    ["fractional episode", changed(130, "Example.Long.Show.S01E131.5.mkv"), 170],
+    ["unverified plain numbering", files.map((file, i) => ({
+      ...file, name: "Example Long Show - " + String(i + 1).padStart(3, "0") + ".mkv"
+    })), 170],
+    ["out-of-range request", files, 170, 171]
+  ]) {
+    const data = { items: [{ expand: { trs: [{
+      infoHash: "a".repeat(40), dualAudio: config.media === "dub", files: candidates
+    }] } }] };
+    const results = await extension.single({
+      anilistId: 1, titles: ["Example Long Show"], episode, episodeCount: count,
+      fetch: async () => response(data)
+    });
+    assert.deepEqual(results, [], label);
+  }
+});
+
+test("SeaDex verified long packs preserve language separation and reject ambiguous matches", async () => {
+  const files = Array.from({ length: 170 }, (_, i) => ({
+    name: "Example.Long.Show.S01E" + String(i + 1).padStart(2, "0") + ".1080p.mkv", length: 100
+  }));
+  const torrent = (hash, dualAudio, extraEpisode, separator = "") => ({
+    infoHash: hash.repeat(40), dualAudio,
+    files: [...files, { name: "Example.Long.Show.S00" + separator + "E" + extraEpisode + ".1080p.mkv", length: 100 }]
+  });
+  const data = { items: [{ expand: { trs: [
+    torrent("a", config.media === "dub", "02"),
+    torrent("b", config.media !== "dub", "02"),
+    torrent("c", config.media === "dub", "131"),
+    torrent("d", config.media === "dub", "02", ".")
+  ] } }] };
+  const results = await extension.single({
+    anilistId: 1, media: { title: { english: "Example Long Show" }, episodes: 170 }, episode: 131,
+    fetch: async () => response(data)
+  });
+  assert.deepEqual(results.map(item => item.hash), ["a".repeat(40), "d".repeat(40)],
+    "use the catalog count, preserve audio separation, and require one unique target");
+});
+
 test("SeaDex transport fixes preserve episode and dub/sub filtering", async () => {
   const isDub = config.media === "dub";
   const torrent = (hash, episode, dualAudio) => ({
