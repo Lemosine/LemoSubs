@@ -20,7 +20,7 @@ const TRACKERS = [
   "udp://tracker.torrent.eu.org:451/announce"
 ].map(tracker => `&tr=${encodeURIComponent(tracker)}`).join("");
 
-const DUB_AUDIO_RE = /\b(dubbed|dual[-\s._]?audio|english[-\s._]?(?:dub|audio)|eng[-\s._]?(?:dub|audio)|multi[-\s._]?audio)\b/i;
+const DUB_AUDIO_RE = /\b(dub|dubbed|dual[-\s._]?audio|english[-\s._]?(?:dub|audio)|eng[-\s._]?(?:dub|audio)|multi[-\s._]?audio)\b/i;
 
 const COUR_RELEASE_MAPPINGS = [
   {
@@ -198,6 +198,8 @@ function parseRss(xml, query) {
     .map(item => {
       const title = tag(item, "title");
       const hash = nyaaTag(item, "infoHash").toLowerCase();
+      const category = nyaaTag(item, "categoryId");
+      if (category && category !== CATEGORY) return null;
       if (!title || !hash || DUB_AUDIO_RE.test(title)) return null;
       if (!titleMatches(title, query.titles)) return null;
       if (!seasonMatches(title, expectedSeason)) return null;

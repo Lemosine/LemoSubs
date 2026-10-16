@@ -22,6 +22,7 @@ const TRACKERS = [
 const DUB_AUDIO_RE = /\b(dub|dubbed|dual(?:[-\s._]?audio)?|english[-\s._]?(?:dub|audio)|eng[-\s._]?(?:dub|audio)|multi[-\s._]?audio|multi(?![-\s._]?subs?))\b/i;
 const ENGLISH_AUDIO_RE = /\b(?:english|eng)[-\s._]?(?:dub(?:bed)?|audio)\b|\baudio[-\s._]?(?:english|eng)\b/i;
 const ENGLISH_SUB_RE = /\b(?:english|eng)[-\s._]?subs?(?:titles?)?\b|\bsubs?(?:titles?)?[-\s._]?(?:english|eng)\b/i;
+const SHORT_DUB_RE = /\[\s*dub\s*\]/i;
 
 const COUR_RELEASE_MAPPINGS = [
   {
@@ -201,10 +202,10 @@ function entryHash(entry) {
 
 function audioMatches(entry) {
   const title = entry.title;
-  if (MEDIA === "dub") return ENGLISH_AUDIO_RE.test(title);
-  if (DUB_AUDIO_RE.test(title)) return false;
-  // Only Nyaa's translated category has the same meaning as our existing sub source.
+  // Nyaa's English-translated category supplies context for its short [Dub] label.
   const translatedNyaa = entry.trackerId === "nyaasi" && entry.categoryId.includes(6001000);
+  if (MEDIA === "dub") return ENGLISH_AUDIO_RE.test(title) || (translatedNyaa && SHORT_DUB_RE.test(title));
+  if (DUB_AUDIO_RE.test(title)) return false;
   return translatedNyaa || ENGLISH_SUB_RE.test(title);
 }
 

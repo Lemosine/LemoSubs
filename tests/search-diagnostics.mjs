@@ -90,6 +90,49 @@ for (const provider of ["Nyaa", "Knaben"]) {
     }
   });
 
+  test(provider + ": bracketed dub labels follow translated Nyaa provenance and stay out of subs", async t => {
+    const advance = clock(t);
+    const rows = [
+      { title: "Target Example S02E08 1080p [Dub]", hash: "a".repeat(40) },
+      { title: "Target Example S02E08 1080p [ dUb ]", hash: "b".repeat(40) },
+      { title: "Target Example S02E08 1080p [MultiSub]", hash: "c".repeat(40) },
+      { title: "Target Example S02E09 1080p [Dub]", hash: "d".repeat(40) },
+      { title: "Target Example S01E08 1080p [Dub]", hash: "e".repeat(40) },
+      { title: "Unrelated Series S02E08 1080p [Dub]", hash: "f".repeat(40) },
+      { title: "Target Example S02E08 1080p [German Dub]", hash: "1".repeat(40) },
+      { title: "Target Example S02E08 1080p [Dub]", hash: "2".repeat(40), category: "1_3" },
+      { title: "Target Example S02E08 1080p [Dub]", hash: "3".repeat(40), category: "1_4" },
+      { title: "Target Example S02E08 1080p Dub", hash: "4".repeat(40) }
+    ];
+    if (provider === "Knaben") {
+      rows.push(
+        { title: "Target Example S02E08 1080p [Dub]", hash: "5".repeat(40), tracker: "tokyotosho" },
+        { title: "Target Example S02E08 1080p [Dub]", hash: "6".repeat(40), category: "unknown" }
+      );
+    }
+    for (const method of ["single", "batch", "movie"]) {
+      let calls = 0;
+      const result = await settle(extension[method]({
+        titles: ["Target Example Season 2"], episode: 8, fetch: async url => {
+          calls++;
+          if (provider === "Nyaa") assert.equal(new URL(url).searchParams.get("c"), "1_2");
+          const body = provider === "Knaben" ? JSON.stringify({ hits: rows.map(row => ({
+            title: row.title, hash: row.hash, trackerId: row.tracker ?? "nyaasi",
+            categoryId: row.category ? [6000000] : [6000000, 6001000]
+          })) }) : "<rss><channel>" + rows.map(row =>
+            "<item><title><![CDATA[" + row.title + "]]></title><nyaa:infoHash>" +
+            row.hash + "</nyaa:infoHash><nyaa:categoryId>" + (row.category ?? "1_2") +
+            "</nyaa:categoryId></item>").join("") + "</channel></rss>";
+          return { ok: true, status: 200, text: async () => body };
+        }
+      }), advance);
+      assert.deepEqual(result.map(item => item.hash).sort(),
+        config.media === "dub" ? ["a".repeat(40), "b".repeat(40)] : ["c".repeat(40)],
+        "only scoped dub tags pass dubs; subtitle results exclude every dub tag");
+      assert.equal(calls, 1, "the classification fix needs no extra requests");
+    }
+  });
+
   test(provider + ": keep genuine empty results and successful fallback results", async t => {
     const advance = clock(t);
     for (const method of ["single", "batch", "movie"]) {

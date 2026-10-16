@@ -45,13 +45,21 @@ cooldown using the server's Retry-After header, or one minute if it is absent
 or invalid. The error displays the remaining wait; failed responses are not
 cached. Network failures remain distinct from searches with no matches.
 
-Nyaa 0.1.8 and Knaben 0.1.2 retain all supplied title aliases during local
+Nyaa and Knaben retain all supplied title aliases during local
 result filtering. Earlier variant limits could discard an alias that was
 actually searched. The network budget remains three aliases and at most nine
 single/movie queries or three batch queries, with the same deadline.
 When no usable result is found, a failed query now remains an error even if
 another alias returned an empty response. Successful fallback results still
 return normally. Audio, season and episode requirements are unchanged.
+
+Nyaa 0.1.9 and Knaben 0.1.3 recognize a standalone bracketed `[Dub]`
+label in Nyaa's English-translated anime category. Knaben requires both the
+Nyaa tracker ID and its translated category for this fallback; other sources
+still require explicit English audio labels. Dub tags are excluded from
+Lemo Subs. Nyaa also rejects explicit RSS categories outside its requested
+English-translated category. MultiSub alone is not evidence of English audio.
+These are source-label checks, not verification of the media's audio tracks.
 
 The queue, cache and cooldown last for this extension's loaded lifetime; other
 installed Nyaa extensions have their own requests. Avoid repeated refreshes
@@ -72,7 +80,7 @@ desktop host can register its cross-origin permission. Permission is limited
 to `https://api.knaben.org/v2/`; no proxy, private endpoint or credentials are
 involved. Earlier Node-only checks missed this host requirement.
 After updating the repository in Hayase, fully quit and reopen the app to
-reload the manifest permissions. Check that Knaben shows version 0.1.2.
+reload the manifest permissions. Check that Knaben shows version 0.1.3.
 
 Initial checks found subtitle candidates for Liar Game episode 8 and Black
 Clover 132 in 1080p. Coverage overlaps other providers; this is a backup,
@@ -81,6 +89,14 @@ not a promise of additional releases.
 StremThru Torz's public P2P lookup also worked, but is not included: its
 file-indexed series packs need a verified Hayase file-selection adapter first.
 No Torz/debrid credentials are used or stored.
+
+AnimeTosho NEW is a separate successor to the retired original. The original
+[AnimeTosho homepage](https://animetosho.org/) links to the successor's old
+`.xyz` domain, which redirects to `.net`. Its
+[FAQ](https://animetosho.net/about) documents public JSON feeds, tested on
+October 16, 2026. It has not been added to these extensions: the inspected
+record originated on Nyaa, and the missing result was caused by its short
+dub label. The retired extension ID still represents the original service.
 
 Run the offline regression checks with Node.js:
 
