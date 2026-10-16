@@ -30,6 +30,15 @@ pending single/batch requests and searches up to three title aliases, stopping
 when a query returns usable matches. Its requests run one at a time, at least
 one second apart, with a fourteen-second total search deadline.
 
+SeaDex 0.1.6 registers its records API path in Hayase's manifest:
+`https://releases.moe/api/collections/entries/`. This lets the desktop host
+handle responses that omit cross-origin headers, which otherwise appear as
+"Failed to fetch". It does not bypass site access restrictions or fix outages.
+After updating, fully quit and reopen Hayase to load the new permission.
+Connection failures, HTTP errors and malformed responses remain errors, not
+"no matches". Episode and audio filters are unchanged; no automatic retries,
+proxy, credentials or extra endpoints were added.
+
 Nyaa caches up to 32 successful feeds for one minute, reapplying the current
 episode/audio filters on reuse. HTTP 429 stops queued requests and starts a
 cooldown using the server's Retry-After header, or one minute if it is absent
@@ -72,6 +81,7 @@ node tests/batch-fallback.mjs
 node tests/network-search.mjs
 node --test tests/rate-limit.mjs
 node --test tests/knaben.mjs
+node --test tests/seadex.mjs
 ```
 
 The offline checks cover Hayase's decoded-URL prefix contract, manifest/code

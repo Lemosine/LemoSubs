@@ -74,15 +74,23 @@ async function fetchJson(request, url) {
     });
     if (!res.ok) throw new Error("SeaDex returned HTTP " + res.status + ".");
     const text = await res.text();
+    let data;
     try {
-      return JSON.parse(text);
+      data = JSON.parse(text);
     } catch {
       throw new Error("SeaDex returned an invalid response instead of JSON.");
     }
+    if (!Array.isArray(data?.items)) throw new Error("SeaDex returned an invalid records response.");
+    return data;
   })();
 
   try {
     return await Promise.race([response, timeout]);
+  } catch (error) {
+    if (error instanceof TypeError) {
+      throw new Error("SeaDex connection failed (releases.moe). Update extensions and restart Hayase; if it persists, check the service or network. " + error.message);
+    }
+    throw error;
   } finally {
     clearTimeout(timer);
   }
