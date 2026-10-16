@@ -19,7 +19,7 @@
     "manifestVersion": 2,
     "id": "hayase.extension.lemosine.subs.nyaa",
     "name": "Lemo Subs Nyaa",
-    "version": "0.1.7",
+    "version": "0.1.8",
     "description": "English-subtitled anime torrents from Nyaa.si.",
     "type": "torrent",
     "accuracy": "low",
@@ -30,7 +30,7 @@
     "url": "aHR0cHM6Ly9ueWFhLnNp",
     "icon": "https://nyaa.si/static/favicon.png",
     "update": "https://raw.githubusercontent.com/Lemosine/LemoSubs/main/index.json",
-    "code": "https://raw.githubusercontent.com/Lemosine/LemoSubs/main/lemo.subs.nyaa.js?v=0.1.7"
+    "code": "https://raw.githubusercontent.com/Lemosine/LemoSubs/main/lemo.subs.nyaa.js?v=0.1.8"
   },
   {
     "manifestVersion": 2,
@@ -68,7 +68,7 @@
     "manifestVersion": 2,
     "id": "hayase.extension.lemosine.subs.knaben",
     "name": "Lemo Subs Knaben",
-    "version": "0.1.1",
+    "version": "0.1.2",
     "description": "Anime torrent backup from Knaben. Keeps English-subtitle candidates and excludes dub/dual-audio labels.",
     "url": "aHR0cHM6Ly9hcGkua25hYmVuLm9yZy92Mi8=",
     "type": "torrent",
@@ -78,6 +78,6 @@
     "languages": ["US"],
     "icon": "https://webtorrent.io/img/webtorrent-small.png",
     "update": "https://raw.githubusercontent.com/Lemosine/LemoSubs/main/index.json",
-    "code": "https://raw.githubusercontent.com/Lemosine/LemoSubs/main/lemo.subs.knaben.js?v=0.1.1"
+    "code": "https://raw.githubusercontent.com/Lemosine/LemoSubs/main/lemo.subs.knaben.js?v=0.1.2"
   }
 ]

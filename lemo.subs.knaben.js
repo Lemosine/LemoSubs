@@ -382,7 +382,8 @@ function titleVariants(titles) {
     variants.push(title);
   }
 
-  return [...new Set(variants)].slice(0, 4);
+  // Only network searches are capped; local matching must retain every alias.
+  return [...new Set(variants)];
 }
 
 function queryTitles(query) {
@@ -459,12 +460,10 @@ async function search(query, isBatch = false) {
   // Broad queries also find episode ranges; audio and episode checks stay local.
   const attempts = [...new Set([...searches, ...titles])];
   const deadline = Date.now() + SEARCH_TIMEOUT_MS;
-  let successfulRequests = 0;
   let lastError;
   for (const item of attempts) {
     try {
       const data = await fetchJson(request, buildUrl(item), deadline);
-      successfulRequests++;
       const results = applyExclusions(dedupe(parseHits(data, normalizedQuery)), normalizedQuery.exclusions);
       if (results.length) return results;
     } catch (error) {
@@ -473,7 +472,8 @@ async function search(query, isBatch = false) {
     }
     if (Date.now() >= deadline) throw searchTimeoutError();
   }
-  if (!successfulRequests && lastError) throw lastError;
+  // An empty response from one alias cannot establish that failed aliases had no matches.
+  if (lastError) throw lastError;
   return [];
 }
 
